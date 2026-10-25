@@ -1,6 +1,7 @@
 
 # I Choice:
 
+
 - Have Wire guard, install on all new bare-metal server, but also need to update related config files.
   
 - This is still OK, as its not auto scale by default and bare metal, adding is always a good amount of time.
@@ -10,6 +11,9 @@
 - No direct expose to internet, like tunnels.
 
 
+<br>
+
+<br>
 
 
 | Approach | Operational Overhead (3 SREs) | Performance / Latency | Complexity | Verdict |
@@ -21,6 +25,9 @@
 
 
 
+<br>
+
+<br>
 
 
 # other plan, if we update bare-metal automatically in future.
@@ -29,7 +36,10 @@
 - newer network flow ( as following, design ... )
 
 
----
+<br>
+
+<br>
+
 
 we can deploy a dedicated Site-to-Site Egress Gateway (an outbound router/proxy host) in Provider B. This shifts the architecture from a Host-to-Site (Hub-and-Spoke) model to a Site-to-Site Tunnel, eliminating the need to install WireGuard, manage kernel modules, or distribute cryptographic keypairs across the 30 bare-metal servers.
 
@@ -63,4 +73,5 @@ Instead of running WireGuard on every workload server, you place a dedicated Lin
 │  [ vpc-gateway-a ] ──────► [ Redis / K8s Core Services ]         │
 └──────────────────────────────────────────────────────────────────┘
 ```
----
+
+
