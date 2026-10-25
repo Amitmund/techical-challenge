@@ -1,11 +1,13 @@
 # TODO
 
 ```
-Monitoring, if needed, Self healing ( restart with count and time interval) then only page.
 
-Deployment pipeline, and related checks.
+- Monitoring, if needed, Self healing ( restart with count and time interval) then only page.
 
-Dynamic, Config-Driven WireGuard Scaling, when adding new bear metals or new providers.
+- Deployment pipeline, and related checks.
 
-Active / Passive wireGuard failover.
+- Dynamic, Config-Driven WireGuard Scaling, when adding new bear metals or new providers.
+
+- Active / Passive wireGuard failover.
+
 ```
