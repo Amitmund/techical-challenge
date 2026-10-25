@@ -14,7 +14,7 @@ This step-by-step guide builds and verifies the exact dual-network topology on a
                             │
        ┌────────────────────┴────────────────────┐
        ▼                                         ▼
-[ Docker Network: provider-b ]        [ Docker Network: provider-a ]
+[ podman Network: provider-b ]        [ podman Network: provider-a ]
   Subnet: 172.28.0.0/16 (Public)        Subnet: 172.29.0.0/16 (Private VPC)
        │                                         │
        ├─ [ baremetal-node ]                     ├─ [ saas-redis ]
@@ -34,23 +34,28 @@ This step-by-step guide builds and verifies the exact dual-network topology on a
 ```
 
 ---
+Running this topology with **Podman** requires root privileges (`sudo`) to manage network namespaces, load kernel modules, manipulate `iptables`, and attach multiple virtual interfaces directly to containers without rootless user-namespace ID mapping conflicts.
+
+---
 
 ### Step 1: Host Prerequisites & Workspace Setup
 
-Ensure the host has the kernel WireGuard module loaded, along with `docker`, `kind`, and `kubectl`.
+Install Podman, `kind`, `kubectl`, and the required host kernel modules.
 
 ```bash
 # 1. Update apt and install required tools
 sudo apt-get update
-sudo apt-get install -y docker.io wireguard-tools iptables curl iproute2 jq
+sudo apt-get install -y podman wireguard-tools iptables curl iproute2 jq
 
-# 2. Enable Docker and load host kernel modules
-sudo systemctl enable --now docker
+# 2. Ensure host kernel modules are loaded
 sudo modprobe wireguard
 sudo modprobe iptable_nat
 sudo modprobe iptable_filter
 
-# 3. Install kind (if not already installed)
+# 3. Enable Podman system service
+sudo systemctl enable --now podman.socket
+
+# 4. Install kind (if not already installed)
 if ! command -v kind &>/dev/null; then
   KIND_VERSION="v0.24.0"
   curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
@@ -58,39 +63,37 @@ if ! command -v kind &>/dev/null; then
   sudo mv ./kind /usr/local/bin/kind
 fi
 
-# 4. Install kubectl (if not already installed)
+# 5. Install kubectl (if not already installed)
 if ! command -v kubectl &>/dev/null; then
   curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
   chmod +x ./kubectl
   sudo mv ./kubectl /usr/local/bin/kubectl
 fi
 
-# 5. Create working directory
+# 6. Create working directory
 mkdir -p ~/wireguard-mock && cd ~/wireguard-mock
 
 ```
 
 ---
 
-### Step 2: Create Isolated Docker Networks
+### Step 2: Create Isolated Podman Networks
 
-Create two isolated bridge networks. By default, Docker isolates traffic between user-defined bridge networks via internal `DOCKER-ISOLATION` iptables chains.
+Create two bridge networks to isolate the simulated public internet from the private VPC.
 
 ```bash
 # Clean up prior test runs
-docker rm -f baremetal-node vpc-gateway saas-redis provider-a-k8s-control-plane 2>/dev/null || true
-docker network rm provider-a provider-b 2>/dev/null || true
+sudo podman rm -f baremetal-node vpc-gateway saas-redis provider-a-k8s-control-plane 2>/dev/null || true
+sudo podman network rm provider-a provider-b 2>/dev/null || true
 
-# Create Provider B (simulated public internet / bare-metal network)
-docker network create \
+# Create Provider B network (simulated public internet / bare-metal network)
+sudo podman network create \
   --subnet 172.28.0.0/16 \
-  --opt com.docker.network.bridge.name=br-provider-b \
   provider-b
 
-# Create Provider A (private isolated VPC)
-docker network create \
+# Create Provider A network (private isolated VPC)
+sudo podman network create \
   --subnet 172.29.0.0/16 \
-  --opt com.docker.network.bridge.name=br-provider-a \
   provider-a
 
 ```
@@ -99,34 +102,37 @@ docker network create \
 
 ### Step 3: Deploy the Managed SaaS Service (Redis)
 
-Launch Redis directly inside `provider-a` at static IP `172.29.0.20`. It publishes **no ports** to the host.
+Launch Redis on `provider-a` at static IP `172.29.0.20` with no published host ports.
 
 ```bash
-docker run -d \
+sudo podman run -d \
   --name saas-redis \
   --network provider-a \
   --ip 172.29.0.20 \
   --restart unless-stopped \
-  redis:7-alpine redis-server --protected-mode no
+  docker.io/library/redis:7-alpine redis-server --protected-mode no
 
 ```
 
 ---
 
-### Step 4: Deploy the Kubernetes Cluster & Sample Workload
+### Step 4: Deploy the Kubernetes Cluster with Podman
 
-Spin up a lightweight `kind` cluster and attach its control-plane node directly to `provider-a` at IP `172.29.0.30`.
+Use `KIND_EXPERIMENTAL_PROVIDER=podman` to initialize the cluster and connect it to `provider-a` at IP `172.29.0.30`.
 
 ```bash
-# 1. Create Kind cluster
-kind delete cluster --name provider-a-k8s 2>/dev/null || true
-kind create cluster --name provider-a-k8s
+# 1. Create Kind cluster using Podman engine
+sudo KIND_EXPERIMENTAL_PROVIDER=podman kind delete cluster --name provider-a-k8s 2>/dev/null || true
+sudo KIND_EXPERIMENTAL_PROVIDER=podman kind create cluster --name provider-a-k8s
+
+# Export kubeconfig so kubectl works seamlessly under sudo
+export KUBECONFIG="$(sudo kind get kubeconfig-path --name=provider-a-k8s 2>/dev/null || sudo podman exec provider-a-k8s-control-plane cat /etc/kubernetes/admin.conf > /tmp/admin.conf && echo /tmp/admin.conf)"
 
 # 2. Attach Kind control-plane container to the Provider A VPC network
-docker network connect --ip 172.29.0.30 provider-a provider-a-k8s-control-plane
+sudo podman network connect --ip 172.29.0.30 provider-a provider-a-k8s-control-plane
 
-# 3. Deploy a sample HTTP service exposed on NodePort 30080
-cat <<EOF | kubectl apply -f -
+# 3. Deploy the sample HTTP service exposed on NodePort 30080
+cat <<EOF | sudo kubectl --kubeconfig=${KUBECONFIG} apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -144,7 +150,7 @@ spec:
     spec:
       containers:
       - name: web
-        image: hashicorp/http-echo:0.2.3
+        image: docker.io/hashicorp/http-echo:0.2.3
         args: ["-text=HTTP 200 OK: reached core k8s workload from bare-metal via WireGuard"]
         ports:
         - containerPort: 5678
@@ -165,7 +171,7 @@ spec:
 EOF
 
 # 4. Wait for deployment readiness
-kubectl rollout status deployment/sample-workload --timeout=60s
+sudo kubectl --kubeconfig=${KUBECONFIG} rollout status deployment/sample-workload --timeout=60s
 
 ```
 
@@ -173,26 +179,26 @@ kubectl rollout status deployment/sample-workload --timeout=60s
 
 ### Step 5: Deploy the Dual-Homed VPC Gateway
 
-The gateway connects to both `provider-b` (`172.28.0.2`, simulated public internet) and `provider-a` (`172.29.0.2`, internal VPC).
+Connect the gateway to both `provider-b` (`172.28.0.2`) and `provider-a` (`172.29.0.2`).
 
 ```bash
 # 1. Start gateway container on provider-b
-docker run -d \
+sudo podman run -d \
   --name vpc-gateway \
   --network provider-b \
   --ip 172.28.0.2 \
   --privileged \
   --sysctl net.ipv4.ip_forward=1 \
-  alpine:3.20 sleep infinity
+  docker.io/library/alpine:3.20 sleep infinity
 
 # 2. Attach second interface (eth1) to provider-a
-docker network connect --ip 172.29.0.2 provider-a vpc-gateway
+sudo podman network connect --ip 172.29.0.2 provider-a vpc-gateway
 
 # 3. Install networking utilities inside the gateway
-docker exec vpc-gateway apk add --no-cache wireguard-tools iptables iproute2
+sudo podman exec vpc-gateway apk add --no-cache wireguard-tools iptables iproute2
 
 # 4. Generate Gateway WireGuard keypair
-docker exec vpc-gateway sh -c "
+sudo podman exec vpc-gateway sh -c "
   mkdir -p /etc/wireguard
   wg genkey | tee /etc/wireguard/gw_private.key | wg pubkey > /etc/wireguard/gw_public.key
 "
@@ -207,18 +213,18 @@ Launch the isolated client container on `provider-b` at static IP `172.28.0.100`
 
 ```bash
 # 1. Start baremetal container on provider-b
-docker run -d \
+sudo podman run -d \
   --name baremetal-node \
   --network provider-b \
   --ip 172.28.0.100 \
   --privileged \
-  alpine:3.20 sleep infinity
+  docker.io/library/alpine:3.20 sleep infinity
 
-# 2. Install testing tools and WireGuard on bare-metal node
-docker exec baremetal-node apk add --no-cache wireguard-tools iptables iproute2 curl redis
+# 2. Install testing tools and WireGuard on the bare-metal node
+sudo podman exec baremetal-node apk add --no-cache wireguard-tools iptables iproute2 curl redis
 
 # 3. Generate Bare-Metal WireGuard keypair
-docker exec baremetal-node sh -c "
+sudo podman exec baremetal-node sh -c "
   mkdir -p /etc/wireguard
   wg genkey | tee /etc/wireguard/bm_private.key | wg pubkey > /etc/wireguard/bm_public.key
 "
@@ -229,18 +235,18 @@ docker exec baremetal-node sh -c "
 
 ### Step 7: Negative Test (Prove Baseline Isolation)
 
-Confirm that `baremetal-node` **cannot** route to Provider A's private VPC before the tunnel is configured.
+Verify that `baremetal-node` **cannot** route to Provider A's private VPC before the tunnel is configured.
 
 ```bash
 echo -n "Testing Redis reachability (should FAIL): "
-if docker exec baremetal-node nc -z -w 2 172.29.0.20 6379; then
+if sudo podman exec baremetal-node nc -z -w 2 172.29.0.20 6379; then
   echo "ERROR: Redis is reachable! Networks are not isolated."
 else
   echo "PASSED: Redis is unreachable (VPC is strictly isolated)."
 fi
 
 echo -n "Testing K8s Service reachability (should FAIL): "
-if docker exec baremetal-node nc -z -w 2 172.29.0.30 30080; then
+if sudo podman exec baremetal-node nc -z -w 2 172.29.0.30 30080; then
   echo "ERROR: K8s is reachable! Networks are not isolated."
 else
   echo "PASSED: K8s NodePort is unreachable."
@@ -250,24 +256,24 @@ fi
 
 ---
 
-### Step 8: Configure and Bring Up WireGuard Tunnel
+### Step 8: Configure and Activate the WireGuard Tunnel
 
-Exchange keys, assign overlay IPs (`10.100.0.1` and `10.100.0.10`), and configure kernel SNAT on the gateway.
+Exchange keys, assign overlay IPs (`10.100.0.1` and `10.100.0.10`), and enable SNAT on the gateway interface facing Provider A.
 
 ```bash
 # 1. Read public keys
-GW_PUB=$(docker exec vpc-gateway cat /etc/wireguard/gw_public.key)
-BM_PUB=$(docker exec baremetal-node cat /etc/wireguard/bm_public.key)
+GW_PUB=$(sudo podman exec vpc-gateway cat /etc/wireguard/gw_public.key)
+BM_PUB=$(sudo podman exec baremetal-node cat /etc/wireguard/bm_public.key)
 
 # 2. Configure Gateway (Hub)
-docker exec vpc-gateway sh -c "
+sudo podman exec vpc-gateway sh -c "
 cat <<EOF > /etc/wireguard/wg0.conf
 [Interface]
 Address = 10.100.0.1/24
 ListenPort = 51820
 PrivateKey = \$(cat /etc/wireguard/gw_private.key)
 
-# SNAT outbound traffic traversing eth1 into Provider A VPC
+# SNAT outbound packets passing through eth1 into Provider A VPC
 PostUp = iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE
 PostDown = iptables -t nat -D POSTROUTING -o eth1 -j MASQUERADE
 
@@ -281,7 +287,7 @@ wg-quick up wg0
 "
 
 # 3. Configure Bare-Metal (Spoke)
-docker exec baremetal-node sh -c "
+sudo podman exec baremetal-node sh -c "
 cat <<EOF > /etc/wireguard/wg0.conf
 [Interface]
 Address = 10.100.0.10/24
@@ -290,7 +296,7 @@ PrivateKey = \$(cat /etc/wireguard/bm_private.key)
 [Peer]
 PublicKey = ${GW_PUB}
 Endpoint = 172.28.0.2:51820
-# Route the VPC CIDR through the WireGuard interface
+# Route the entire VPC CIDR through wg0
 AllowedIPs = 172.29.0.0/16
 PersistentKeepalive = 25
 EOF
@@ -304,21 +310,21 @@ wg-quick up wg0
 
 ### Step 9: Positive Verification (End-to-End Validation)
 
-Execute the verification tests from `baremetal-node` through the tunnel into Provider A.
+Execute the verification commands from `baremetal-node` to confirm connectivity across the tunnel.
 
-#### 1. Verify WireGuard Link & Handshake
+#### 1. Check WireGuard Link & Handshake
 
 ```bash
-docker exec baremetal-node wg show
+sudo podman exec baremetal-node wg show
 
 ```
 
-*(Look for `latest handshake: ... seconds ago` and `transfer: ... KiB received, ... KiB sent`)*
+*(Look for `latest handshake: ... seconds ago` and active data transfer counts)*
 
-#### 2. Verify Managed SaaS (Redis) Access
+#### 2. Query Managed SaaS (Redis)
 
 ```bash
-docker exec baremetal-node redis-cli -h 172.29.0.20 ping
+sudo podman exec baremetal-node redis-cli -h 172.29.0.20 ping
 
 ```
 
@@ -329,10 +335,10 @@ PONG
 
 ```
 
-#### 3. Verify Kubernetes Sample Service Access
+#### 3. Query Kubernetes Sample Service
 
 ```bash
-docker exec baremetal-node curl -s http://172.29.0.30:30080
+sudo podman exec baremetal-node curl -s http://172.29.0.30:30080
 
 ```
 
@@ -347,12 +353,12 @@ HTTP 200 OK: reached core k8s workload from bare-metal via WireGuard
 
 ### Step 10: Teardown & Clean Up
 
-To destroy the local mock environment completely:
+To delete all containers, networks, and the Kind cluster:
 
 ```bash
-docker rm -f baremetal-node vpc-gateway saas-redis 2>/dev/null || true
-kind delete cluster --name provider-a-k8s 2>/dev/null || true
-docker network rm provider-a provider-b 2>/dev/null || true
-rm -rf ~/wireguard-mock
+sudo podman rm -f baremetal-node vpc-gateway saas-redis 2>/dev/null || true
+sudo KIND_EXPERIMENTAL_PROVIDER=podman kind delete cluster --name provider-a-k8s 2>/dev/null || true
+sudo podman network rm provider-a provider-b 2>/dev/null || true
+rm -rf ~/wireguard-mock /tmp/admin.conf
 
 ```
