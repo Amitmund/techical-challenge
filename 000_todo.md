@@ -2,7 +2,7 @@
 
 ```
 
-- Monitoring, if needed, Self healing ( restart with count and time interval) then only page.
+- Monitoring, if needed, Self healing ( restart with count and time interval ) then only page.
 
 - Deployment pipeline, and related checks.
 
