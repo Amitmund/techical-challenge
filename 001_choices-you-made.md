@@ -10,9 +10,8 @@
 - No direct expose to internet, like tunnels.
 
 
-| Approach | Operational Overhead (3 SREs)
 
- | Performance / Latency | Complexity | Verdict |
+| Performance / Latency | Complexity | Verdict |
 | --- | --- | --- | --- | --- |
 | **Traditional IPsec (strongSwan)** | High (IKE phase negotiations, dead-peer detection flakiness, fragile configs) | Moderate | High | **Reject** — Too operationally brittle for a 3-person team.
 
