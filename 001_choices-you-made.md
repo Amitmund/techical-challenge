@@ -10,7 +10,7 @@
 - No direct expose to internet, like tunnels.
 
 
----
+
 
 | Approach | Operational Overhead (3 SREs) | Performance / Latency | Complexity | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
@@ -20,7 +20,7 @@
 | **WireGuard Hub-and-Spoke Gateway** | Very Low (Static configs, kernel-level `wg`, zero control plane daemons) | Maximum (In-kernel crypto, line-rate throughput) | Low | **Recommended** — Simple, auditable, standard Linux tools (`ip`, `iptables`, `wg-quick`). |
 
 
----
+
 
 
 # other plan, if we update bare-metal automatically in future.
