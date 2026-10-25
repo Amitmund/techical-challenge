@@ -9,6 +9,7 @@
 
 - No direct expose to internet, like tunnels.
 
+---
 
 
 | Performance / Latency | Complexity | Verdict |
