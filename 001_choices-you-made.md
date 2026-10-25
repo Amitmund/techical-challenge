@@ -10,7 +10,7 @@
 - No direct expose to internet, like tunnels.
 
 ---
-
+```
 
 | Performance / Latency | Complexity | Verdict |
 | --- | --- | --- | --- | --- |
@@ -21,7 +21,7 @@
 | **Mesh Overlay (Tailscale / Nebula)** | Low | High (Kernel WireGuard / userspace tun) | Low–Moderate (requires coordination server or SaaS trust) | **Strong Alternative** — Tailscale Subnet Router is clean, but introduces third-party control-plane SaaS dependencies or Headscale self-hosting. |
 | **WireGuard Hub-and-Spoke Gateway** | Very Low (Static configs, kernel-level `wg`, zero control plane daemons) | Maximum (In-kernel crypto, line-rate throughput) | Low | **Recommended** — Simple, auditable, standard Linux tools (`ip`, `iptables`, `wg-quick`). |
 
-
+```
 ---
 
 
