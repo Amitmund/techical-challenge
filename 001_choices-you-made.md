@@ -30,7 +30,7 @@
 <br>
 
 
-# other plan, if we update bare-metal automatically in future.
+# other plan, if we move out from bare-metal to auto scale with VM, in future, but thats seems not easy on pop/edge location doe a CDN company.
 
 - Not much bottleneck, but need to have HA.
 - newer network flow ( as following, design ... )
