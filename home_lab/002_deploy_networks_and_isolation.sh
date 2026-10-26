@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: 002_deploy_networks_and_isolation.sh
+# Script: 001_deploy_networks_and_isolation.sh
 # Purpose: Cleans up existing lab state, instantiates isolated Podman bridge
 #          networks (Provider A VPC & Provider B Internet), and enforces host-level
 #          kernel firewall isolation rules.
