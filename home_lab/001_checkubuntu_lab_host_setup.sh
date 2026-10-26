@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: 001_check_prereqs.sh
+# Script: 001_checkubuntu_lab_host_setup.sh
 # Purpose: Step-by-step verification of host packages, kernel modules,
 #          Podman socket, kind, and kubectl binaries with command audit visibility.
 # ==============================================================================
