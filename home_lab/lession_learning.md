@@ -89,9 +89,13 @@ Unlike the older CNI stack or legacy Docker daemon (which create bridge interfac
 
 1. **At `podman network create`:**
 Netavark writes the network definition to disk (under `/var/lib/containers/storage/networks/netavark/`) and reserves the next available interface name (`podman1` for Provider B, `podman2` for Provider A). **It does not touch the host kernel yet.**
-2. **At first container launch (`podman run --network ...`):**
+
+
+3. **At first container launch (`podman run --network ...`):**
 Netavark creates the bridge interface in the host kernel, brings it `UP`, assigns the `.1` gateway IP (`172.28.0.1` or `172.29.0.1`), and creates the `veth` pair.
-3. **In Step 6 of this verification script:**
+
+
+5. **In Step 6 of this verification script:**
 The test launches `test-isolation-target` on `provider-a` and an Alpine ping container on `provider-b`. Netavark creates `podman1` and `podman2` in the kernel at that moment.
 
 
