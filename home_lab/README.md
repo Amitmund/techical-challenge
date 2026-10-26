@@ -175,6 +175,10 @@ sudo podman run -d \
 
 ```
 
+```
+sudo podman ps
+```
+
 ---
 
 ### Step 4: Deploy Kind Kubernetes Cluster & Sample App
