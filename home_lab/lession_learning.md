@@ -54,8 +54,8 @@ Because Netavark manages virtual interfaces automatically, the bridge device nam
 Sections 3 and 4 have been updated to query {{.NetworkInterface}} and dynamically inspect the corresponding Linux host kernel devices.
 
 
----
 
+---
 
 
 `which` dependency vs. `command -v`: In minimal Ubuntu installs and cloud images, the which binary is often not installed by default or is deprecated. command -v is a POSIX shell builtin that works natively without external dependencies.
@@ -94,7 +94,9 @@ Netavark creates the bridge interface in the host kernel, brings it `UP`, assign
 3. **In Step 6 of this verification script:**
 The test launches `test-isolation-target` on `provider-a` and an Alpine ping container on `provider-b`. Netavark creates `podman1` and `podman2` in the kernel at that moment.
 
+
 ---
+
 
 ### Verifying It Live
 
