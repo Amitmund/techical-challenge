@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Script: 002_verify_networks_and_isolation.sh
-# Purpose: Step-by-step verification of environment reset, Podman virtual bridges,
+# Purpose: Step-by-step verification of environment reset, Podman Netavark bridges,
 #          and kernel-level isolation rules with full command audit visibility.
 # ==============================================================================
 
-set -uo pipefail
+set -u
 
 SEPARATOR="=============================================================================="
 SUB_SEPARATOR="------------------------------------------------------------------------------"
@@ -21,7 +21,7 @@ echo "  sudo KIND_EXPERIMENTAL_PROVIDER=podman kind get clusters"
 echo ""
 echo "[EXPECTED OUTPUT]:"
 echo "  Containers : (Empty output - zero matching containers)"
-echo "  Kind       : (provider-a-k8s not listed / 'No kind clusters found.')"
+echo "  Kind       : (clean - provider-a-k8s not present)"
 echo ""
 echo "[ACTUAL OUTPUT]:"
 echo -n "  Containers : "
@@ -38,7 +38,7 @@ echo ""
 
 echo "${SEPARATOR}"
 echo "2. VERIFY PODMAN NETWORK REGISTRATION & DRIVERS"
-echo "WHY: Confirms Podman's Netavark/CNI stack registered both logical networks"
+echo "WHY: Confirms Podman's Netavark stack registered both logical networks"
 echo "     under the standard isolated 'bridge' driver."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
@@ -56,47 +56,57 @@ echo ""
 
 
 echo "${SEPARATOR}"
-echo "3. VERIFY IPAM SUBNETS, GATEWAYS, AND BRIDGE BINDINGS"
-echo "WHY: Guarantees provider-a holds the private VPC CIDR (172.29.0.0/16) and"
-echo "     provider-b holds the transit CIDR (172.28.0.0/16), each bound to their"
-echo "     explicitly named host Linux bridge devices."
+echo "3. VERIFY IPAM SUBNETS, GATEWAYS, AND NETAVARK INTERFACES"
+echo "WHY: Netavark dynamically assigns host network devices (podman0, podman1, etc.)."
+echo "     Querying {{.NetworkInterface}} confirms that provider-a has CIDR 172.29.0.0/16"
+echo "     and provider-b has CIDR 172.28.0.0/16 mapped to their respective devices."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
 echo "  sudo podman network inspect provider-a provider-b \\"
-echo "    --format '{{.Name}}: Subnet={{(index .Subnets 0).Subnet}}, Gateway={{(index .Subnets 0).Gateway}}, Bridge={{index .Options \"bridge\"}}'"
+echo "    --format '{{.Name}}: Subnet={{(index .Subnets 0).Subnet}}, Gateway={{(index .Subnets 0).Gateway}}, Interface={{.NetworkInterface}}'"
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  provider-a: Subnet=172.29.0.0/16, Gateway=172.29.0.1, Bridge=br-provider-a"
-echo "  provider-b: Subnet=172.28.0.0/16, Gateway=172.28.0.1, Bridge=br-provider-b"
+echo "  provider-a: Subnet=172.29.0.0/16, Gateway=172.29.0.1, Interface=podmanX (e.g. podman1)"
+echo "  provider-b: Subnet=172.28.0.0/16, Gateway=172.28.0.1, Interface=podmanY (e.g. podman0)"
 echo ""
 echo "[ACTUAL OUTPUT]:"
 sudo podman network inspect provider-a provider-b \
-  --format '{{.Name}}: Subnet={{(index .Subnets 0).Subnet}}, Gateway={{(index .Subnets 0).Gateway}}, Bridge={{index .Options "bridge"}}'
+  --format '{{.Name}}: Subnet={{(index .Subnets 0).Subnet}}, Gateway={{(index .Subnets 0).Gateway}}, Interface={{.NetworkInterface}}'
 echo "${SEPARATOR}"
 echo ""
 
 
 echo "${SEPARATOR}"
-echo "4. VERIFY LINUX HOST KERNEL BRIDGE DEVICES"
-echo "WHY: Confirms that the Linux host kernel instantiated the actual virtual switch"
-echo "     interfaces (br-provider-a, br-provider-b) and bound the .1 gateway IPs."
+echo "4. VERIFY LINUX HOST KERNEL BRIDGE DEVICES & GATEWAY IPS"
+echo "WHY: Verifies that the Linux host kernel instantiated the actual Netavark bridge"
+echo "     interfaces reported in Step 3 and assigned the expected .1 gateway IPs."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  ip -br addr show br-provider-a br-provider-b"
+echo "  IFACE_A=\$(sudo podman network inspect provider-a --format '{{.NetworkInterface}}')"
+echo "  IFACE_B=\$(sudo podman network inspect provider-b --format '{{.NetworkInterface}}')"
+echo "  ip -br addr show \"\$IFACE_A\" \"\$IFACE_B\""
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  br-provider-a    UP/DOWN    172.29.0.1/16 ..."
-echo "  br-provider-b    UP/DOWN    172.28.0.1/16 ..."
+echo "  podmanX    UP/UNKNOWN    172.29.0.1/16 ..."
+echo "  podmanY    UP/UNKNOWN    172.28.0.1/16 ..."
 echo ""
 echo "[ACTUAL OUTPUT]:"
-ip -br addr show br-provider-a br-provider-b
+IFACE_A=$(sudo podman network inspect provider-a --format '{{.NetworkInterface}}' 2>/dev/null || echo "")
+IFACE_B=$(sudo podman network inspect provider-b --format '{{.NetworkInterface}}' 2>/dev/null || echo "")
+
+if [ -n "${IFACE_A}" ] && [ -n "${IFACE_B}" ]; then
+  ip -br addr show "${IFACE_A}" "${IFACE_B}"
+else
+  # Fallback: display interfaces holding our designated subnets
+  ip -br addr show | grep -E '(172\.28\.0\.1|172\.29\.0\.1)' || echo "  Interfaces not found!"
+fi
 echo "${SEPARATOR}"
 echo ""
 
 
 echo "${SEPARATOR}"
 echo "5. VERIFY IPTABLES ISOLATION DROP RULES IN FORWARD CHAIN"
-echo "WHY: Prevents host kernel routing between the two bridges (net.ipv4.ip_forward)."
+echo "WHY: Prevents host kernel routing between the two subnets (net.ipv4.ip_forward)."
 echo "     Rules #1 and #2 must be explicit DROP rules intercepting all cross-traffic."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
