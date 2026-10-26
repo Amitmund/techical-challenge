@@ -148,5 +148,58 @@ Combined with `podman port saas-redis` returning empty, this verifies that Redis
 
 ---
 
+These commands spin up an **ephemeral, throwaway client container** inside the private VPC network (`provider-a`) to test Redis connectivity and data persistence without installing Redis tools on the Ubuntu host.
+
+---
+
+### Command Breakdown
+
+Taking the first command as the blueprint:
+
+```bash
+sudo podman run --rm --network provider-a docker.io/library/redis:7-alpine redis-cli -h 172.29.0.20 ping
+
+```
+
+| Component | What It Does |
+| --- | --- |
+| `sudo podman run` | Creates and starts a new container under the root Podman daemon. |
+| `--rm` | **Self-destruct on exit.** As soon as the command finishes, Podman destroys the container, its filesystem layer, and its network namespace. Nothing is left behind in `podman ps -a`. |
+| `--network provider-a` | Attaches the container's virtual NIC to the `provider-a` bridge (172.29.0.0/16). Podman's Netavark IPAM gives it a temporary IP (e.g., `172.29.0.2`) on the same subnet as Redis (`172.29.0.20`). |
+| `docker.io/library/redis:7-alpine` | Reuses the Redis image already downloaded on your host. Because the image is cached, the container starts in milliseconds. |
+| `redis-cli -h 172.29.0.20 <cmd>` | Overrides the default entrypoint (`redis-server`) and instead executes the client utility targeting the private IP of `saas-redis`. |
+
+---
+
+### What Each of the Three Commands Does
+
+1. **`... redis-cli -h 172.29.0.20 ping`**
+* **Network test:** Opens a TCP handshake to `172.29.0.20:6379`.
+* **L7 handshake:** Sends the Redis `PING` command.
+* **Verification:** If the server is listening and healthy, it prints **`PONG`** to stdout.
+
+
+2. **`... redis-cli -h 172.29.0.20 set test:init 'ok'`**
+* **Write operation:** Creates a second ephemeral container, connects to `172.29.0.20`, and sets the key `test:init` to the string `'ok'`.
+* **Verification:** Confirms Redis is not read-only and memory allocation succeeds (returns **`OK`**).
+
+
+3. **`... redis-cli -h 172.29.0.20 get test:init`**
+* **Read operation & persistence:** Creates a third ephemeral container and requests the value for `test:init`.
+* **Verification:** Redis returns **`"ok"`**, proving the data written by container #2 remained in `saas-redis` memory after container #2 was destroyed.
+
+
+
+---
+
+### Why Run It This Way?
+
+1. **Zero Host Port Leakage:** Because `saas-redis` was started without `-p 6379:6379`, the host cannot reach Redis via `localhost:6379`. Running a container connected to `--network provider-a` places the client *inside* the private VPC subnet.
+2. **Zero Host Tooling Dependencies:** You don't need `redis-tools` or `redis-cli` installed on your Ubuntu host.
+3. **Simulates Real Workload Behavior:** It proves that any workload attached to `provider-a` (like the Gateway's `eth1` or the Kind cluster's `eth1`) can resolve ARP, complete a TCP 3-way handshake, and read/write to the database.
+
+---
+
+
 
 
