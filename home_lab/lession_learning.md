@@ -201,5 +201,9 @@ sudo podman run --rm --network provider-a docker.io/library/redis:7-alpine redis
 ---
 
 
+Kubeconfig Server Endpoint Sanitization: When pulling `/etc/kubernetes/admin.conf` directly from inside the container, kubeadm writes `server: https://provider-a-k8s-control-plane:6443`. The host cannot resolve that container hostname unless it is rewritten to `127.0.0.1:6443`, or unless `kind get kubeconfig --name provider-a-k8s` is used to export it with host port mapping pre-configured.
+
+Pre-Flight Network Guard: Validates that `provider-a` exists and `podman.socket` is active before Kind spins up, preventing container runtime lockups.
+
 
 
