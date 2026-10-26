@@ -86,19 +86,6 @@ This document contains the complete **Design Notes (Deliverable 1)**, the **Ubun
 
 
 
-### 1.4 Technical Choice Evaluation
-
-
-| Performance / Latency | Complexity | Verdict |
-| --- | --- | --- | --- | --- |
-| **Traditional IPsec (strongSwan)** | High (IKE phase negotiations, dead-peer detection flakiness, fragile configs) | Moderate | High | **Reject** — Too operationally brittle for a 3-person team.
-
- |
-| **L7 Reverse Proxy / mTLS (Envoy / Traefik)** | Moderate | Low for HTTP; awkward for DBs/queues (TCP proxying, dynamic port pools) | Moderate | **Reject** — Managed queues and databases (Postgres, Redis, Kafka) suffer with arbitrary L7/L4 reverse proxy translation compared to standard L3 routing.
-
- |
-| **Mesh Overlay (Tailscale / Nebula)** | Low | High (Kernel WireGuard / userspace tun) | Low–Moderate (requires coordination server or SaaS trust) | **Strong Alternative** — Tailscale Subnet Router is clean, but introduces third-party control-plane SaaS dependencies or Headscale self-hosting. |
-| **WireGuard Hub-and-Spoke Gateway** | Very Low (Static configs, kernel-level `wg`, zero control plane daemons) | Maximum (In-kernel crypto, line-rate throughput) | Low | **Recommended** — Simple, auditable, standard Linux tools (`ip`, `iptables`, `wg-quick`). |
 
 ---
 
