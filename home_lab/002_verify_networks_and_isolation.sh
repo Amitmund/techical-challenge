@@ -20,7 +20,7 @@ echo "  sudo podman ps -a --filter 'name=baremetal-node|vpc-gateway|saas-redis|p
 echo "  sudo KIND_EXPERIMENTAL_PROVIDER=podman kind get clusters"
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  Containers : (Empty output - zero matching containers)"
+echo "  Containers : (clean - zero matching containers)"
 echo "  Kind       : (clean - provider-a-k8s not present)"
 echo ""
 echo "[ACTUAL OUTPUT]:"
@@ -101,6 +101,9 @@ echo "[ACTUAL OUTPUT]:"
 IFACE_A=$(sudo podman network inspect provider-a --format '{{.NetworkInterface}}' 2>/dev/null || echo "")
 IFACE_B=$(sudo podman network inspect provider-b --format '{{.NetworkInterface}}' 2>/dev/null || echo "")
 
+printf "  - Provider A Netavark Device : %s\n" "${IFACE_A:-NOT SET}"
+printf "  - Provider B Netavark Device : %s\n" "${IFACE_B:-NOT SET}"
+
 FOUND_COUNT=0
 for iface in "${IFACE_A}" "${IFACE_B}"; do
   if [ -n "${iface}" ] && ip link show "${iface}" >/dev/null 2>&1; then
@@ -144,9 +147,9 @@ echo "WHY: Confirms the firewall actively intercepts cross-bridge packets in run
 echo "     and ensures the iptables DROP counter increments on rule #1."
 echo "${SUB_SEPARATOR}"
 echo "[COMMANDS EXECUTED]:"
-echo "  1. sudo podman run -d --rm --name test-isolation-target --network provider-a --ip 172.29.0.254 docker.io/library/alpine:3.20 sleep 30"
+echo "  1. sudo podman run -d --rm --name test-isolation-target --network provider-a --ip 172.29.0.254 docker.io/library/alpine:3.20 sleep 60"
 echo "  2. sudo podman run --rm --network provider-b --ip 172.28.0.254 docker.io/library/alpine:3.20 ping -c 2 -W 1 172.29.0.254"
-echo "  3. sudo iptables -nvL FORWARD 1"
+echo "  3. sudo iptables -nvL FORWARD --line-numbers | head -n 3"
 echo "  4. sudo podman rm -f test-isolation-target"
 echo ""
 echo "[EXPECTED OUTPUT]:"
@@ -157,7 +160,7 @@ echo "[ACTUAL OUTPUT]:"
 
 # A. Clean prior test container if lingering and start target listener in provider-a
 sudo podman rm -f test-isolation-target >/dev/null 2>&1 || true
-sudo podman run -d --rm --name test-isolation-target --network provider-a --ip 172.29.0.254 docker.io/library/alpine:3.20 sleep 30 >/dev/null
+sudo podman run -d --rm --name test-isolation-target --network provider-a --ip 172.29.0.254 docker.io/library/alpine:3.20 sleep 60 >/dev/null
 
 # B. Attempt cross-bridge ping from provider-b
 echo -n "  Running cross-bridge ping test: "
@@ -168,9 +171,9 @@ else
   echo "FAILED (Packets were not dropped! Check iptables FORWARD chain)"
 fi
 
-# C. Inspect dropped packet counter
-echo "  Inspecting iptables DROP rule counter:"
-sudo iptables -nvL FORWARD 1
+# C. Inspect dropped packet counter using standard iptables listing
+echo "  Inspecting iptables DROP rule counter (Chain FORWARD, Rule 1):"
+sudo iptables -nvL FORWARD --line-numbers | head -n 3
 
 # D. Cleanup target container
 sudo podman rm -f test-isolation-target >/dev/null 2>&1 || true
