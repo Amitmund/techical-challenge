@@ -24,6 +24,31 @@ sudo podman network create \
 ```
 
 
+In Docker:
+
+```
+[EXPECTED OUTPUT]:
+  provider-a: Subnet=172.29.0.0/16, Gateway=172.29.0.1, Bridge=br-provider-a
+  provider-b: Subnet=172.28.0.0/16, Gateway=172.28.0.1, Bridge=br-provider-b
+
+[ACTUAL OUTPUT]:
+provider-a: Subnet=172.29.0.0/16, Gateway=172.29.0.1, Bridge=
+provider-b: Subnet=172.28.0.0/16, Gateway=172.28.0.1, Bridge=
+```
+
+
+In Podman:
+
+```
+[EXPECTED OUTPUT]:
+  provider-a: Subnet=172.29.0.0/16, Gateway=172.29.0.1, Interface=podmanX (e.g. podman1)
+  provider-b: Subnet=172.28.0.0/16, Gateway=172.28.0.1, Interface=podmanY (e.g. podman0)
+
+[ACTUAL OUTPUT]:
+provider-a: Subnet=172.29.0.0/16, Gateway=172.29.0.1, Interface=podman2
+provider-b: Subnet=172.28.0.0/16, Gateway=172.28.0.1, Interface=podman1
+```
+
 Because Netavark manages virtual interfaces automatically, the bridge device name is stored in {{.NetworkInterface}} (which creates kernel devices like podman0, podman1, etc.) rather than the Docker-style option map {{index .Options "bridge"}}.
 
 Sections 3 and 4 have been updated to query {{.NetworkInterface}} and dynamically inspect the corresponding Linux host kernel devices.
