@@ -16,7 +16,7 @@ echo "WHY: Podman and Kind manage persistent network namespaces and IP allocatio
 echo "     Lingering containers cause static IP collision errors during setup."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  sudo podman ps -a --filter 'name=baremetal-node|vpc-gateway|saas-redis|provider-a-k8s' --format '{{.Names}}: {{.Status}}'"
+echo "  sudo podman ps -a --filter 'name=baremetal-node|vpc-gateway|saas-redis|provider-a-k8s|test-isolation-target' --format '{{.Names}}: {{.Status}}'"
 echo "  sudo KIND_EXPERIMENTAL_PROVIDER=podman kind get clusters"
 echo ""
 echo "[EXPECTED OUTPUT]:"
@@ -25,7 +25,14 @@ echo "  Kind       : (clean - provider-a-k8s not present)"
 echo ""
 echo "[ACTUAL OUTPUT]:"
 echo -n "  Containers : "
-sudo podman ps -a --filter "name=baremetal-node|vpc-gateway|saas-redis|provider-a-k8s" --format "{{.Names}}: {{.Status}}" || true
+LEFTOVER_CONTAINERS=$(sudo podman ps -a --filter "name=baremetal-node|vpc-gateway|saas-redis|provider-a-k8s|test-isolation-target" --format "{{.Names}}: {{.Status}}" 2>/dev/null || true)
+if [ -z "${LEFTOVER_CONTAINERS}" ]; then
+  echo "(clean - zero matching containers)"
+else
+  echo "WARNING: Lingering containers detected:"
+  echo "${LEFTOVER_CONTAINERS}"
+fi
+
 echo -n "  Kind       : "
 if sudo KIND_EXPERIMENTAL_PROVIDER=podman kind get clusters 2>&1 | grep -q "provider-a-k8s"; then
   echo "provider-a-k8s found (WARNING: Not cleaned!)"
@@ -87,18 +94,25 @@ echo "  IFACE_B=\$(sudo podman network inspect provider-b --format '{{.NetworkIn
 echo "  ip -br addr show \"\$IFACE_A\" \"\$IFACE_B\""
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  podmanX    UP/UNKNOWN    172.29.0.1/16 ..."
-echo "  podmanY    UP/UNKNOWN    172.28.0.1/16 ..."
+echo "  podmanX    UP/UNKNOWN/DOWN    172.29.0.1/16 ..."
+echo "  podmanY    UP/UNKNOWN/DOWN    172.28.0.1/16 ..."
 echo ""
 echo "[ACTUAL OUTPUT]:"
 IFACE_A=$(sudo podman network inspect provider-a --format '{{.NetworkInterface}}' 2>/dev/null || echo "")
 IFACE_B=$(sudo podman network inspect provider-b --format '{{.NetworkInterface}}' 2>/dev/null || echo "")
 
-if [ -n "${IFACE_A}" ] && [ -n "${IFACE_B}" ]; then
-  ip -br addr show "${IFACE_A}" "${IFACE_B}"
-else
-  # Fallback: display interfaces holding our designated subnets
-  ip -br addr show | grep -E '(172\.28\.0\.1|172\.29\.0\.1)' || echo "  Interfaces not found!"
+FOUND_COUNT=0
+for iface in "${IFACE_A}" "${IFACE_B}"; do
+  if [ -n "${iface}" ] && ip link show "${iface}" >/dev/null 2>&1; then
+    ip -br addr show "${iface}"
+    FOUND_COUNT=$((FOUND_COUNT + 1))
+  fi
+done
+
+if [ "$FOUND_COUNT" -lt 2 ]; then
+  echo "  Note: Netavark lazily initializes kernel interfaces upon first container connection."
+  echo "  Host addresses currently bound to provider subnets:"
+  ip -br addr show | grep -E '(172\.28\.0\.1|172\.29\.0\.1)' || echo "  (Pending active container attachment)"
 fi
 echo "${SEPARATOR}"
 echo ""
@@ -113,10 +127,10 @@ echo "[COMMAND EXECUTED]:"
 echo "  sudo iptables -nvL FORWARD --line-numbers | head -n 7"
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)"
+echo "  Chain FORWARD (policy ACCEPT ...)"
 echo "  num   pkts bytes target     prot opt in     out     source               destination"
-echo "  1        0     0 DROP       all  --  *      *       172.28.0.0/16        172.29.0.0/16"
-echo "  2        0     0 DROP       all  --  *      *       172.29.0.0/16        172.28.0.0/16"
+echo "  1     ...  ...   DROP       all  --  *      *       172.28.0.0/16        172.29.0.0/16"
+echo "  2     ...  ...   DROP       all  --  *      *       172.29.0.0/16        172.28.0.0/16"
 echo ""
 echo "[ACTUAL OUTPUT]:"
 sudo iptables -nvL FORWARD --line-numbers | head -n 7
@@ -141,7 +155,8 @@ echo "  iptables Rule 1 : pkts >= 2, bytes > 0"
 echo ""
 echo "[ACTUAL OUTPUT]:"
 
-# A. Start temporary target listener container in provider-a
+# A. Clean prior test container if lingering and start target listener in provider-a
+sudo podman rm -f test-isolation-target >/dev/null 2>&1 || true
 sudo podman run -d --rm --name test-isolation-target --network provider-a --ip 172.29.0.254 docker.io/library/alpine:3.20 sleep 30 >/dev/null
 
 # B. Attempt cross-bridge ping from provider-b
@@ -150,7 +165,7 @@ PING_OUTPUT=$(sudo podman run --rm --network provider-b --ip 172.28.0.254 docker
 if echo "${PING_OUTPUT}" | grep -q "100% packet loss"; then
   echo "PASSED (100% packet loss detected)"
 else
-  echo "FAILED (Packets were not dropped!)"
+  echo "FAILED (Packets were not dropped! Check iptables FORWARD chain)"
 fi
 
 # C. Inspect dropped packet counter
