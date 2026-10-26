@@ -67,6 +67,16 @@ Download Pollution in `$PWD (Steps 4 & 5): curl -Lo ./kind and curl -LO .../kube
 Prevent False-Positive Module Checks in Step 2: 
 `lsmod | grep -E '^(wireguard|iptable_nat|iptable_filter)'` passes if any single module is present. Checking each module explicitly ensures that a missing iptable_nat or wireguard module is flagged immediately.
 
+
 ---
 
 
+Idempotent `iptables` Purging: `iptables -D` deletes only a single matching rule. If the script was re-run multiple times during testing, identical rules accumulate down the chain. Using `while ... iptables -D ...; do :; done` drains all duplicates before inserting fresh rules at positions 1 and 2.
+
+Ephemeral Container Cleanup: In Step 1, if any previous verification left a test container running (like `test-isolation-target`), `podman network rm` would fail because the network endpoint is still locked. Adding test containers to the cleanup list guarantees clean network deletion.
+
+Netavark Interface Discovery: Now that `-o "bridge=..."` is omitted, Netavark dynamically provisions host devices (`podman0`, `podman1`, etc.). Querying `{{.NetworkInterface}}` immediately after creation makes the script report the exact kernel interfaces instantiated on your host.
+
+
+
+---
