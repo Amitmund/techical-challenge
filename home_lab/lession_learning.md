@@ -22,3 +22,13 @@ sudo podman network create \
   --gateway 172.29.0.1 \
   provider-a
 ```
+
+
+Because Netavark manages virtual interfaces automatically, the bridge device name is stored in {{.NetworkInterface}} (which creates kernel devices like podman0, podman1, etc.) rather than the Docker-style option map {{index .Options "bridge"}}.
+
+Sections 3 and 4 have been updated to query {{.NetworkInterface}} and dynamically inspect the corresponding Linux host kernel devices.
+
+
+---
+
+
