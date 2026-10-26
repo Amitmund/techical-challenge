@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: 001_install_and_verify_prereqs.sh
+# Script: 001_deploy_ubuntu_lab_host_setup.sh
 # Purpose: Installs, configures, and verifies all required host packages, kernel
 #          modules, daemon sockets, kind, and kubectl binaries for the lab.
 # ==============================================================================
