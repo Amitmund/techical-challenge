@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: 004_verify_saas_redis.sh
+# Script: 003_verify_saas_redis.sh
 # Purpose: Comprehensive validation of Redis container lifecycle, IPAM binding,
 #          zero host port publication, internal listener, kernel bridge activation,
 #          and intra-VPC reachability.
