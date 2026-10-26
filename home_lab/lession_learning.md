@@ -122,4 +122,31 @@ podman2          UP             172.29.0.1/16 ...
 ---
 
 
+---
+
+
+
+
+`map[6379/tcp:[]]` confirms zero host ports are mapped.
+
+Because upstream `redis:7-alpine` contains an `EXPOSE 6379` directive in its image metadata, Podman registers the port in `.NetworkSettings.Ports`, but maps it to an empty slice (`[]`):
+
+
+- No host mapping (our private setup):
+
+`map[6379/tcp:[]]`
+
+(Port 6379 exists inside the container, but zero host interfaces or ports forward to it.)
+
+
+- If a host port were published (e.g. -p 6379:6379):
+
+`map[6379/tcp:[{HostIp:0.0.0.0 HostPort:6379}]]`
+
+Combined with `podman port saas-redis` returning empty, this verifies that Redis is completely unmapped to the host network stack.
+
+
+---
+
+
 
