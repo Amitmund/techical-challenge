@@ -57,13 +57,15 @@ Sections 3 and 4 have been updated to query {{.NetworkInterface}} and dynamicall
 ---
 
 
-A review of 001_install_and_verify_prereqs.sh shows that the structure is solid, but three edge cases will cause issues on minimal Ubuntu environments:
 
-which dependency vs. command -v: In minimal Ubuntu installs and cloud images, the which binary is often not installed by default or is deprecated. command -v is a POSIX shell builtin that works natively without external dependencies.
+`which` dependency vs. `command -v`: In minimal Ubuntu installs and cloud images, the which binary is often not installed by default or is deprecated. command -v is a POSIX shell builtin that works natively without external dependencies.
 
-False-Positive Kernel Module Check in Step 2: MODULES_LOADED=$(lsmod | grep -E "^(wireguard|iptable_nat|iptable_filter)") evaluates to true as long as at least one module is present. If wireguard loads but iptable_nat fails, [ -n "${MODULES_LOADED}" ] still passes. Each module should be validated individually.
+False-Positive Kernel Module Check in Step 2: `MODULES_LOADED=$(lsmod | grep -E "^(wireguard|iptable_nat|iptable_filter)")` evaluates to true as long as at least one module is present. If wireguard loads but iptable_nat fails, `[ -n "${MODULES_LOADED}" ]` still passes. Each module should be validated individually.
 
-Download Pollution in $PWD (Steps 4 & 5): curl -Lo ./kind and curl -LO .../kubectl download directly to the caller's current working directory. If executed from a directory without write permissions, it fails, and if successful, it leaves temporary download artifacts behind. Downloading into /tmp/ is cleaner and safer.
+Download Pollution in `$PWD (Steps 4 & 5): curl -Lo ./kind and curl -LO .../kubectl` download directly to the caller's current working directory. If executed from a directory without write permissions, it fails, and if successful, it leaves temporary download artifacts behind. Downloading into `/tmp/` is cleaner and safer.
+
+Prevent False-Positive Module Checks in Step 2: 
+`lsmod | grep -E '^(wireguard|iptable_nat|iptable_filter)'` passes if any single module is present. Checking each module explicitly ensures that a missing iptable_nat or wireguard module is flagged immediately.
 
 ---
 
