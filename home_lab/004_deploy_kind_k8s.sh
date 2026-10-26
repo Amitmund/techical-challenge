@@ -12,6 +12,19 @@ SEPARATOR="=====================================================================
 SUB_SEPARATOR="------------------------------------------------------------------------------"
 KUBECONFIG_PATH="/tmp/admin.conf"
 
+# --- Pre-flight Checks ---
+if ! sudo podman network exists provider-a 2>/dev/null; then
+  echo "ERROR: Podman network 'provider-a' does not exist."
+  echo "Execute 002_deploy_networks_and_isolation.sh before running this script."
+  exit 1
+fi
+
+if ! sudo systemctl is-active --quiet podman.socket; then
+  echo "ERROR: podman.socket is inactive. Kind requires Podman socket emulation."
+  echo "Execute: sudo systemctl enable --now podman.socket"
+  exit 1
+fi
+
 echo "${SEPARATOR}"
 echo "STEP 1: GENERATE KIND CLUSTER CONFIGURATION"
 echo "[NOTE]   : Generates kind-config.yaml with explicit control-plane port mappings."
@@ -64,7 +77,7 @@ echo "    --name provider-a-k8s \\"
 echo "    --config ~/wireguard-mock/k8s/kind-config.yaml"
 echo ""
 echo "[WHY]:"
-echo "  - KIND_EXPERIMENTAL_PROVIDER=podman : Instructs Kind to talk to /run/podman/podman.sock."
+echo "  - KIND_EXPERIMENTAL_PROVIDER=podman : Instructs Kind to communicate with /run/podman/podman.sock."
 echo "  - --name provider-a-k8s             : Identifies the cluster and control-plane container."
 echo ""
 echo "[EXPECTED OUTPUT]:"
@@ -83,22 +96,27 @@ echo ""
 
 echo "${SEPARATOR}"
 echo "STEP 3: EXTRACT & EXPORT KUBECONFIG"
-echo "[NOTE]   : Extracts the admin kubeconfig from the Kind control-plane container."
-echo "[CAUSE]  : Host kubectl requires authenticated client credentials to manage"
-echo "           workloads on the local cluster."
+echo "[NOTE]   : Extracts and formats the admin kubeconfig for host kubectl execution."
+echo "[CAUSE]  : Host kubectl requires valid client certificates and a reachable 127.0.0.1 endpoint."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  sudo podman exec provider-a-k8s-control-plane cat /etc/kubernetes/admin.conf > ${KUBECONFIG_PATH}"
-echo "  export KUBECONFIG=${KUBECONFIG_PATH}"
+echo "  sudo KIND_EXPERIMENTAL_PROVIDER=podman kind get kubeconfig --name provider-a-k8s > ${KUBECONFIG_PATH}"
+echo "  sudo chmod 600 ${KUBECONFIG_PATH}"
 echo ""
 echo "[WHY]:"
-echo "  - Avoids permission conflicts and gives host kubectl direct cluster admin access."
+echo "  - Guarantees the server URL points to host 127.0.0.1:6443 rather than an internal container name."
+echo "  - Provides host kubectl direct cluster admin access."
 echo ""
 echo "[EXPECTED OUTPUT]:"
 echo "  Kubeconfig saved to ${KUBECONFIG_PATH}; cluster certificates readable."
 echo ""
 echo "[ACTUAL OUTPUT]:"
-sudo podman exec provider-a-k8s-control-plane cat /etc/kubernetes/admin.conf > "${KUBECONFIG_PATH}"
+# Prefer kind get kubeconfig; fallback to container extraction with sed patch if needed
+if ! sudo KIND_EXPERIMENTAL_PROVIDER=podman kind get kubeconfig --name provider-a-k8s > "${KUBECONFIG_PATH}" 2>/dev/null; then
+  sudo podman exec provider-a-k8s-control-plane cat /etc/kubernetes/admin.conf > "${KUBECONFIG_PATH}"
+  sed -i -E 's|https://.*:6443|https://127.0.0.1:6443|g' "${KUBECONFIG_PATH}"
+fi
+
 sudo chmod 600 "${KUBECONFIG_PATH}"
 echo "  Kubeconfig extracted to: ${KUBECONFIG_PATH}"
 sudo kubectl --kubeconfig="${KUBECONFIG_PATH}" cluster-info | head -n 2
@@ -144,7 +162,7 @@ echo "  EOF"
 echo ""
 echo "[WHY]:"
 echo "  - Deployment : Runs a deterministic HTTP listener returning an explicit success string."
-echo "  - NodePort   : Binds port 30080 on all node interfaces, including 172.29.0.30."
+echo "  - NodePort   : Binds port 30080 across all interfaces, including 172.29.0.30 on eth1."
 echo ""
 echo "[EXPECTED OUTPUT]:"
 echo "  deployment.apps/sample-workload created"
@@ -170,7 +188,7 @@ spec:
       containers:
       - name: web
         image: docker.io/hashicorp/http-echo:0.2.3
-        args: ["-text=HTTP 200 OK: reached core k8s workload from bare-metal via WireGuard"]
+        args: ["-text=HTTP 200 OK: reached core k8s workload from bare-metal via WireGuard\n"]
         ports:
         - containerPort: 5678
 ---
