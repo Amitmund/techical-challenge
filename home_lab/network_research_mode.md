@@ -8,9 +8,7 @@ In Podman (and container networking in general), **`bridge`** is only one of sev
 | --- | --- | --- | --- | --- |
 | **`bridge`** *(Default)* | `veth` pair + Linux bridge + `iptables`/`nftables` | Containers get virtual MACs on an internal software switch. | Private virtual CIDR; NAT/masquerade to reach outside. | Multi-container apps on a single host; isolated topologies (like our mock). |
 | **`macvlan`** | Kernel `macvlan` module on a parent physical interface (`eth0`) | Every container gets its own **unique physical-looking MAC address**. | Placed directly on the physical/underlay LAN subnet (e.g., your home/office router assigns the IP via DHCP). | Low latency; making containers look like real physical servers on the physical LAN. |
-| **`ipvlan`** (L2 / L3) | Kernel `ipvlan` module on a parent interface | Containers **share the host's MAC address**. | **L2:** Same subnet as parent interface.<br>
-
-<br>**L3:** Different subnets routed without ARP broadcast. | High-density setups where network switches drop or throttle multiple MAC addresses per port (e.g., cloud VMs). |
+| **`ipvlan`** (L2 / L3) | Kernel `ipvlan` module on a parent interface | Containers **share the host's MAC address**. | **L2:** Same subnet as parent interface.<br><br>**L3:** Different subnets routed without ARP broadcast. | High-density setups where network switches drop or throttle multiple MAC addresses per port (e.g., cloud VMs). |
 | **`host`** | None (no network namespace created) | Uses the host's physical network stack and MAC. | Uses the host's IP and port space directly. | Line-rate performance with zero virtualization overhead; services that need all host ports. |
 | **`none`** | Isolated network namespace with only `lo` (loopback) | None. | No external routing. | Air-gapped batch jobs, offline cryptographic operations. |
 | **`container:<id>`** | Shares existing network namespace | Shares MAC with target container. | Shares IP and localhost loopback with target container. | Sidecar patterns (like Kubernetes Pod containers sharing `localhost`). |
