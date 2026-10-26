@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: 001_check_ubuntu_lab_host_setup.sh
+# Script: 001_verify_ubuntu_lab_host_setup.sh
 # Purpose: Step-by-step verification of host packages, kernel modules,
 #          Podman socket, kind, and kubectl binaries with command audit visibility.
 # ==============================================================================
@@ -17,21 +17,30 @@ echo "     cryptokey operations (wg), netfilter rules (iptables), L3 routing (ip
 echo "     JSON parsing (jq), and network probing (curl)."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  which podman wg iptables curl ip jq"
+echo "  command -v podman wg iptables curl ip jq"
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  /usr/bin/podman (or /bin/podman)"
-echo "  /usr/bin/wg"
-echo "  /usr/sbin/iptables"
-echo "  /usr/bin/curl"
-echo "  /usr/sbin/ip (or /bin/ip)"
-echo "  /usr/bin/jq"
+echo "  podman     : /usr/bin/podman (or /bin/podman)"
+echo "  wg         : /usr/bin/wg"
+echo "  iptables   : /usr/sbin/iptables"
+echo "  curl       : /usr/bin/curl"
+echo "  ip         : /usr/sbin/ip (or /bin/ip)"
+echo "  jq         : /usr/bin/jq"
 echo ""
 echo "[ACTUAL OUTPUT]:"
+ALL_PKGS_OK=true
 for bin in podman wg iptables curl ip jq; do
-  BIN_PATH=$(which "$bin" 2>/dev/null || echo "NOT FOUND")
+  BIN_PATH=$(command -v "$bin" 2>/dev/null || echo "NOT FOUND")
   printf "  %-10s : %s\n" "$bin" "$BIN_PATH"
+  if [ "$BIN_PATH" = "NOT FOUND" ]; then
+    ALL_PKGS_OK=false
+  fi
 done
+if [ "$ALL_PKGS_OK" = true ]; then
+  echo "  STATUS: ALL REQUIRED BINARIES PRESENT"
+else
+  echo "  STATUS: ERROR - MISSING ONE OR MORE BINARIES"
+fi
 echo "${SEPARATOR}"
 echo ""
 
@@ -46,16 +55,24 @@ echo "[COMMAND EXECUTED]:"
 echo "  lsmod | grep -E '^(wireguard|iptable_nat|iptable_filter)'"
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  wireguard              <size>  <instances>"
-echo "  iptable_nat            <size>  <instances>"
-echo "  iptable_filter         <size>  <instances>"
+echo "  wireguard        : [LOADED]"
+echo "  iptable_nat      : [LOADED]"
+echo "  iptable_filter   : [LOADED]"
 echo ""
 echo "[ACTUAL OUTPUT]:"
-MODULES=$(lsmod | grep -E "^(wireguard|iptable_nat|iptable_filter)" || true)
-if [ -n "${MODULES}" ]; then
-  echo "${MODULES}"
+ALL_MODS_OK=true
+for mod in wireguard iptable_nat iptable_filter; do
+  if lsmod | grep -q "^${mod}"; then
+    printf "  %-16s : [LOADED]\n" "$mod"
+  else
+    printf "  %-16s : [MISSING / NOT LOADED]\n" "$mod"
+    ALL_MODS_OK=false
+  fi
+done
+if [ "$ALL_MODS_OK" = true ]; then
+  echo "  STATUS: ALL KERNEL MODULES LOADED"
 else
-  echo "  ERROR: One or more required kernel modules are NOT loaded."
+  echo "  STATUS: ERROR - ONE OR MORE KERNEL MODULES MISSING"
 fi
 echo "${SEPARATOR}"
 echo ""
@@ -64,20 +81,25 @@ echo ""
 echo "${SEPARATOR}"
 echo "3. VERIFY PODMAN SYSTEM SOCKET SERVICE"
 echo "WHY: Kind interacts with Podman via Docker-compatible socket emulation."
-echo "     The podman.socket unit must be active and listening on the host."
+echo "     The podman.socket unit must be active and listening on the host filesystem."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
 echo "  sudo systemctl is-active podman.socket"
-echo "  sudo systemctl status podman.socket --no-pager | grep -E '(Active:|Listen:)'"
+echo "  test -S /run/podman/podman.sock"
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  active"
-echo "  Active: active (listening) ..."
-echo "  Listen: /run/podman/podman.sock ..."
+echo "  Unit State   : active"
+echo "  Socket Path  : /run/podman/podman.sock (EXISTS)"
 echo ""
 echo "[ACTUAL OUTPUT]:"
-echo -n "  Socket Status : "
-sudo systemctl is-active podman.socket || echo "inactive"
+SOCKET_STATE=$(sudo systemctl is-active podman.socket 2>/dev/null || echo "inactive")
+printf "  %-14s : %s\n" "Unit State" "$SOCKET_STATE"
+
+if [ -S /run/podman/podman.sock ]; then
+  printf "  %-14s : /run/podman/podman.sock [EXISTS]\n" "Socket File"
+else
+  printf "  %-14s : /run/podman/podman.sock [NOT FOUND]\n" "Socket File"
+fi
 sudo systemctl status podman.socket --no-pager 2>/dev/null | grep -E "(Active:|Listen:)" || true
 echo "${SEPARATOR}"
 echo ""
@@ -89,16 +111,16 @@ echo "WHY: Provisions the local single-zone Kubernetes cluster node to host"
 echo "     the simulated core VPC workloads."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  which kind"
+echo "  command -v kind"
 echo "  kind version"
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  /usr/local/bin/kind (or /usr/bin/kind)"
-echo "  kind v0.24.0 (or higher) go1.x.x linux/amd64"
+echo "  Binary  : /usr/local/bin/kind (or /usr/bin/kind)"
+echo "  Version : kind v0.24.0 (or higher) go1.x.x linux/amd64"
 echo ""
 echo "[ACTUAL OUTPUT]:"
 echo -n "  Binary  : "
-which kind 2>/dev/null || echo "NOT FOUND"
+command -v kind || echo "NOT FOUND"
 echo -n "  Version : "
 if command -v kind &>/dev/null; then
   kind version
@@ -115,17 +137,16 @@ echo "WHY: Interacts with the Kind Kubernetes control plane to deploy the sample
 echo "     HTTP workload and inspect NodePort service endpoints inside Provider A."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  which kubectl"
+echo "  command -v kubectl"
 echo "  kubectl version --client --output=yaml | grep -E '(gitVersion|platform)'"
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  /usr/local/bin/kubectl (or /usr/bin/kubectl)"
-echo "  gitVersion: v1.x.x"
-echo "  platform: linux/amd64"
+echo "  Binary         : /usr/local/bin/kubectl (or /usr/bin/kubectl)"
+echo "  Client Version : gitVersion: v1.x.x / platform: linux/amd64"
 echo ""
 echo "[ACTUAL OUTPUT]:"
 echo -n "  Binary  : "
-which kubectl 2>/dev/null || echo "NOT FOUND"
+command -v kubectl || echo "NOT FOUND"
 echo "  Client Version :"
 if command -v kubectl &>/dev/null; then
   kubectl version --client --output=yaml 2>/dev/null | grep -E "(gitVersion|platform)" || kubectl version --client
