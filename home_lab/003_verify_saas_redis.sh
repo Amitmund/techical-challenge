@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: 003_verify_saas_redis.sh
+# Script: 004_verify_saas_redis.sh
 # Purpose: Comprehensive validation of Redis container lifecycle, IPAM binding,
-#          zero host port publication, internal listener, kernel bridge activation,
-#          and intra-VPC reachability.
+#          zero host port publication, kernel bridge activation, internal listener,
+#          and functional intra-VPC reachability.
 # ==============================================================================
 
 set -u
@@ -59,7 +59,7 @@ echo "  sudo podman inspect saas-redis --format '{{.NetworkSettings.Ports}}'"
 echo ""
 echo "[EXPECTED OUTPUT]:"
 echo "  Port mappings : (None - strictly private)"
-echo "  Inspect Ports : map[]"
+echo "  Inspect Ports : map[6379/tcp:[]] (empty host binding array)"
 echo ""
 echo "[ACTUAL OUTPUT]:"
 echo -n "  Port mappings : "
@@ -69,8 +69,16 @@ if [ -z "${PORT_MAPPINGS}" ]; then
 else
   echo "WARNING: Ports exposed: ${PORT_MAPPINGS}"
 fi
+
 echo -n "  Inspect Ports : "
-sudo podman inspect saas-redis --format '{{.NetworkSettings.Ports}}'
+INSPECT_PORTS=$(sudo podman inspect saas-redis --format '{{.NetworkSettings.Ports}}' 2>/dev/null || echo "unknown")
+echo "${INSPECT_PORTS}"
+
+if echo "${INSPECT_PORTS}" | grep -q "HostPort"; then
+  echo "  STATUS: FAILED - Host port mapping detected!"
+else
+  echo "  STATUS: PASSED - Zero host port mappings (strictly private to VPC)."
+fi
 echo "${SEPARATOR}"
 echo ""
 
