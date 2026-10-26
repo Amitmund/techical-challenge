@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: verify-networks-isolation.sh
+# Script: 002_verify_networks_and_isolation.sh
 # Purpose: Step-by-step verification of environment reset, Podman virtual bridges,
 #          and kernel-level isolation rules with full command audit visibility.
 # ==============================================================================
