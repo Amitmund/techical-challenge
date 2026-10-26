@@ -17,7 +17,8 @@ echo "[CAUSE]  : Base Ubuntu lacks WireGuard userspace tools, netfilter binaries
 echo "           and Podman engine needed to build the multi-provider mock topology."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  sudo apt-get update && sudo apt-get install -y podman wireguard-tools iptables curl iproute2 jq"
+echo "  sudo apt-get update -qq"
+echo "  sudo apt-get install -y -qq podman wireguard-tools iptables curl iproute2 jq"
 echo ""
 echo "[WHY]:"
 echo "  - podman          : Container engine managing isolated bridge namespaces."
@@ -33,7 +34,7 @@ sudo apt-get update -qq
 sudo apt-get install -y -qq podman wireguard-tools iptables curl iproute2 jq >/dev/null
 echo "  Packages successfully updated and installed."
 for pkg in podman wg iptables curl ip jq; do
-  printf "  - %-10s : %s\n" "$pkg" "$(which "$pkg" 2>/dev/null || echo 'NOT FOUND')"
+  printf "  - %-10s : %s\n" "$pkg" "$(command -v "$pkg" 2>/dev/null || echo 'NOT FOUND')"
 done
 echo "${SEPARATOR}"
 echo ""
@@ -46,7 +47,9 @@ echo "[CAUSE]  : Container networks require NAT and packet filtering on host bri
 echo "           WireGuard requires in-kernel module loading for fast ChaCha20 crypto."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  sudo modprobe wireguard iptable_nat iptable_filter"
+echo "  sudo modprobe wireguard"
+echo "  sudo modprobe iptable_nat"
+echo "  sudo modprobe iptable_filter"
 echo ""
 echo "[WHY]:"
 echo "  - wireguard      : In-kernel cryptokey routing engine (avoids tun/tap overhead)."
@@ -54,20 +57,22 @@ echo "  - iptable_nat    : Enables MASQUERADE / SNAT on the Provider A gateway."
 echo "  - iptable_filter : Enables FORWARD chain rules to enforce inter-cloud isolation."
 echo ""
 echo "[EXPECTED OUTPUT]:"
-echo "  wireguard              <size>  <instances>"
-echo "  iptable_nat            <size>  <instances>"
-echo "  iptable_filter         <size>  <instances>"
+echo "  wireguard              [LOADED]"
+echo "  iptable_nat            [LOADED]"
+echo "  iptable_filter         [LOADED]"
 echo ""
 echo "[ACTUAL OUTPUT]:"
-sudo modprobe wireguard
-sudo modprobe iptable_nat
-sudo modprobe iptable_filter
-MODULES_LOADED=$(lsmod | grep -E "^(wireguard|iptable_nat|iptable_filter)" || true)
-if [ -n "${MODULES_LOADED}" ]; then
-  echo "${MODULES_LOADED}"
-else
-  echo "  ERROR: One or more kernel modules failed to load!"
-fi
+sudo modprobe wireguard 2>/dev/null || true
+sudo modprobe iptable_nat 2>/dev/null || true
+sudo modprobe iptable_filter 2>/dev/null || true
+
+for mod in wireguard iptable_nat iptable_filter; do
+  if lsmod | grep -q "^${mod}"; then
+    printf "  - %-16s : [LOADED]\n" "$mod"
+  else
+    printf "  - %-16s : [MISSING / ERROR]\n" "$mod"
+  fi
+done
 echo "${SEPARATOR}"
 echo ""
 
@@ -105,8 +110,8 @@ echo "[CAUSE]  : The technical assessment requires running a single-zone Kuberne
 echo "           cluster locally without deploying a multi-node VM infrastructure."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64"
-echo "  chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind"
+echo "  curl -Lo /tmp/kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64"
+echo "  chmod +x /tmp/kind && sudo mv /tmp/kind /usr/local/bin/kind"
 echo ""
 echo "[WHY]:"
 echo "  - Kind boots standard OCI containers as Kubernetes nodes."
@@ -120,14 +125,14 @@ echo "[ACTUAL OUTPUT]:"
 if ! command -v kind &>/dev/null; then
   echo "  kind binary not found. Downloading v0.24.0..."
   KIND_VERSION="v0.24.0"
-  curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64" -s
-  chmod +x ./kind
-  sudo mv ./kind /usr/local/bin/kind
+  curl -Lo /tmp/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64" -s
+  chmod +x /tmp/kind
+  sudo mv /tmp/kind /usr/local/bin/kind
 fi
 echo -n "  Binary  : "
-which kind 2>/dev/null || echo "NOT FOUND"
+command -v kind || echo "NOT FOUND"
 echo -n "  Version : "
-kind version
+kind version 2>/dev/null || echo "Unable to execute kind version"
 echo "${SEPARATOR}"
 echo ""
 
@@ -140,7 +145,7 @@ echo "           service endpoints from the Ubuntu host."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
 echo "  curl -LO https://dl.k8s.io/release/\$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-echo "  chmod +x ./kubectl && sudo mv ./kubectl /usr/local/bin/kubectl"
+echo "  chmod +x /tmp/kubectl && sudo mv /tmp/kubectl /usr/local/bin/kubectl"
 echo ""
 echo "[WHY]:"
 echo "  - Manages Deployment and NodePort resource declarations in the cluster."
@@ -154,12 +159,12 @@ echo "[ACTUAL OUTPUT]:"
 if ! command -v kubectl &>/dev/null; then
   echo "  kubectl binary not found. Downloading latest stable release..."
   STABLE_K8S=$(curl -L -s https://dl.k8s.io/release/stable.txt)
-  curl -LO "https://dl.k8s.io/release/${STABLE_K8S}/bin/linux/amd64/kubectl" -s
-  chmod +x ./kubectl
-  sudo mv ./kubectl /usr/local/bin/kubectl
+  curl -Lo /tmp/kubectl "https://dl.k8s.io/release/${STABLE_K8S}/bin/linux/amd64/kubectl" -s
+  chmod +x /tmp/kubectl
+  sudo mv /tmp/kubectl /usr/local/bin/kubectl
 fi
 echo -n "  Binary  : "
-which kubectl 2>/dev/null || echo "NOT FOUND"
+command -v kubectl || echo "NOT FOUND"
 echo -n "  Version : "
 kubectl version --client 2>/dev/null | head -n 1
 echo "${SEPARATOR}"
