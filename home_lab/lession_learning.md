@@ -80,3 +80,40 @@ Netavark Interface Discovery: Now that `-o "bridge=..."` is omitted, Netavark dy
 
 
 ---
+
+**expected and normal Netavark behavior**.
+
+
+
+Unlike the older CNI stack or legacy Docker daemon (which create bridge interfaces in the kernel immediately upon `network create`), **Netavark uses lazy instantiation**:
+
+1. **At `podman network create`:**
+Netavark writes the network definition to disk (under `/var/lib/containers/storage/networks/netavark/`) and reserves the next available interface name (`podman1` for Provider B, `podman2` for Provider A). **It does not touch the host kernel yet.**
+2. **At first container launch (`podman run --network ...`):**
+Netavark creates the bridge interface in the host kernel, brings it `UP`, assigns the `.1` gateway IP (`172.28.0.1` or `172.29.0.1`), and creates the `veth` pair.
+3. **In Step 6 of this verification script:**
+The test launches `test-isolation-target` on `provider-a` and an Alpine ping container on `provider-b`. Netavark creates `podman1` and `podman2` in the kernel at that moment.
+
+---
+
+### Verifying It Live
+
+If you check `ip -br addr show` right after running Step 6 (or after starting Redis in Step 3), the kernel devices will be present:
+
+```bash
+ip -br addr show podman1 podman2
+
+```
+
+Output:
+
+```text
+podman1          UP             172.28.0.1/16 ...
+podman2          UP             172.29.0.1/16 ...
+
+```
+
+---
+
+
+
