@@ -1,7 +1,7 @@
 
 ## Mock Environment
 
-- https://github.com/Amitmund/techical-challenge/tree/main/home_lab
+- https://github.com/Amitmund/technical-challenge/tree/main/home_lab
 
 - Initial README.md have the overal implementation.
 - Using `nnn_deploy*` and `nnn_verify*` as sequence for setting of ubuntu home lab environment.
@@ -12,14 +12,14 @@
 **STEPS**:
 
 - Please create an ubuntu system. ( I am using ubuntu 24.04 )
-- git clone https://github.com/Amitmund/techical-challenge.git
+- git clone https://github.com/Amitmund/technical-challenge.git
 - You can also go through the README.md within the home_lab for all the steps.
 - But I have created related scripts that you can execute.
 - The naming convention should explain what its doing.
 - The scripts will also have note, logic, execution commands, expected output and current output, along with further verify scripts.
 
 ```
-cd techical-challege/home_lab
+cd technical-challenge/home_lab
 
 And bash <script_name>
 
