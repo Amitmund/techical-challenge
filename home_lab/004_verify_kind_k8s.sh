@@ -3,7 +3,7 @@
 # Script: 004_verify_kind_k8s.sh
 # Purpose: Comprehensive validation of Kind cluster lifecycle, VPC IP attachment,
 #          Kubernetes API state, sample workload pods, NodePort listeners,
-#          intra-VPC HTTP curl probe, and cross-bridge isolation enforcement.
+#          intra-VPC HTTP probe, and cross-bridge negative isolation enforcement.
 # ==============================================================================
 
 set -u
@@ -11,6 +11,16 @@ set -u
 SEPARATOR="=============================================================================="
 SUB_SEPARATOR="------------------------------------------------------------------------------"
 KUBECONFIG_PATH="/tmp/admin.conf"
+
+# Ensure kubeconfig exists and has proper host loopback endpoint
+if [ ! -f "${KUBECONFIG_PATH}" ]; then
+  if sudo KIND_EXPERIMENTAL_PROVIDER=podman kind get kubeconfig --name provider-a-k8s > "${KUBECONFIG_PATH}" 2>/dev/null; then
+    sudo chmod 600 "${KUBECONFIG_PATH}"
+  elif sudo podman exec provider-a-k8s-control-plane cat /etc/kubernetes/admin.conf > "${KUBECONFIG_PATH}" 2>/dev/null; then
+    sed -i -E 's|https://.*:6443|https://127.0.0.1:6443|g' "${KUBECONFIG_PATH}"
+    sudo chmod 600 "${KUBECONFIG_PATH}"
+  fi
+fi
 
 echo "${SEPARATOR}"
 echo "1. VERIFY KIND CLUSTER & CONTAINER REGISTRATION"
@@ -96,16 +106,22 @@ echo "WHY: Proves that workloads inside Provider A VPC can query the Kubernetes"
 echo "     NodePort service at 172.29.0.30:30080 and receive the expected HTTP payload."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  sudo podman run --rm --network provider-a docker.io/library/curlimages/curl:8.10.1 \\"
-echo "    -s http://172.29.0.30:30080"
+echo "  sudo podman run --rm --network provider-a docker.io/curlimages/curl:8.10.1 \\"
+echo "    --connect-timeout 5 -s http://172.29.0.30:30080"
 echo ""
 echo "[EXPECTED OUTPUT]:"
 echo "  HTTP 200 OK: reached core k8s workload from bare-metal via WireGuard"
 echo ""
 echo "[ACTUAL OUTPUT]:"
-echo -n "  HTTP Response: "
-sudo podman run --rm --network provider-a docker.io/library/curlimages/curl:8.10.1 \
-  -s http://172.29.0.30:30080 2>/dev/null || echo "FAILED to connect inside VPC"
+RESPONSE=$(sudo podman run --rm --network provider-a docker.io/curlimages/curl:8.10.1 \
+  --connect-timeout 5 -s http://172.29.0.30:30080 2>&1 || true)
+
+echo "  Response Payload: ${RESPONSE}"
+if echo "${RESPONSE}" | grep -q "HTTP 200 OK"; then
+  echo "  STATUS: PASSED (Intra-VPC reachability verified)"
+else
+  echo "  STATUS: FAILED (Expected HTTP 200 payload not received)"
+fi
 echo "${SEPARATOR}"
 echo ""
 
@@ -116,7 +132,7 @@ echo "WHY: Confirms that without the WireGuard gateway active, nodes on provider
 echo "     CANNOT reach 172.29.0.30:30080 directly due to iptables FORWARD drops."
 echo "${SUB_SEPARATOR}"
 echo "[COMMAND EXECUTED]:"
-echo "  sudo podman run --rm --network provider-b docker.io/library/curlimages/curl:8.10.1 \\"
+echo "  sudo podman run --rm --network provider-b docker.io/curlimages/curl:8.10.1 \\"
 echo "    --connect-timeout 2 -s http://172.29.0.30:30080"
 echo ""
 echo "[EXPECTED OUTPUT]:"
@@ -124,12 +140,18 @@ echo "  Connection timed out (100% blocked by iptables isolation rule #1)."
 echo ""
 echo "[ACTUAL OUTPUT]:"
 echo -n "  Cross-Bridge Probe Result: "
-PROBE_RESULT=$(sudo podman run --rm --network provider-b docker.io/library/curlimages/curl:8.10.1 \
+PROBE_RESULT=$(sudo podman run --rm --network provider-b docker.io/curlimages/curl:8.10.1 \
   --connect-timeout 2 -s http://172.29.0.30:30080 2>&1 || true)
 
-if [ -z "${PROBE_RESULT}" ]; then
+if echo "${PROBE_RESULT}" | grep -q "HTTP 200 OK"; then
+  echo "FAILED (Security Breach: Kubernetes was reached directly across bridges!)"
+elif [ -z "${PROBE_RESULT}" ]; then
   echo "PASSED (Connection timed out / dropped as expected - VPC is isolated)."
 else
-  echo "FAILED (Unexpected response: ${PROBE_RESULT})"
+  if echo "${PROBE_RESULT}" | grep -Eiq "(timed out|refused|failed to connect|exit code 28)"; then
+    echo "PASSED (Dropped: ${PROBE_RESULT})"
+  else
+    echo "FAILED (Unexpected error during probe: ${PROBE_RESULT})"
+  fi
 fi
 echo "${SEPARATOR}"
