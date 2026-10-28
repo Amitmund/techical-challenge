@@ -52,6 +52,55 @@ This document contains the complete **Design Notes (Deliverable 1)**, the **Ubun
 
 ```
 
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ PRODUCTION HYPERSCALER CLOUD (Provider A: AWS / GCP / Azure)                                     │
+│                                                                                                  │
+│   ┌──────────────────────────────────────────────────────────────────────────────────────────┐   │
+│   │ Network Load Balancer (NLB) / Cloud Active-Passive EIP (e.g., 203.0.113.50)              │   │
+│   │  - Health-checks UDP 51820 on Gateway Instances                                          │   │
+│   └──────────────────────────────┬────────────────────────────┬──────────────────────────────┘   │
+│                                  │                            │                                  │
+│            ┌─────────────────────▼──────┐              ┌──────▼─────────────────────┐            │
+│            │ WireGuard Gateway VM 01    │              │ WireGuard Gateway VM 02    │            │
+│            │ (Availability Zone 1a)     │              │ (Availability Zone 1b)     │            │
+│            │  - Private IP: 10.0.1.10   │  VRRP/CARP   │  - Private IP: 10.0.2.10   │            │
+│            │  - wg0: 10.100.0.1/24      │◄────────────►│  - wg0: 10.100.0.2/24      │            │
+│            │  - TCP MSS Clamping (1360) │  Failover    │  - TCP MSS Clamping (1360) │            │
+│            │  - Strict Destination NAT  │              │  - Strict Destination NAT  │            │
+│            └──────────────┬─────────────┘              └─────────────┬──────────────┘            │
+│                           │                                          │                           │
+│   ────────────────────────┴──────────────────────────────────────────┴────────────────────────    │
+│   Private VPC Backbone (10.0.0.0/16) - Zero Direct Public Ingress Allowed                        │
+│                           │                                          │                           │
+│            ┌──────────────▼─────────────┐              ┌─────────────▼──────────────┐            │
+│            │ Cloud Managed Databases    │              │ Managed Kubernetes (EKS)   │            │
+│            │ (RDS / Elasticache / Kafka)│              │ Internal NLB / Ingress     │            │
+│            └────────────────────────────┘              └────────────────────────────┘            │
+└──────────────────────────────────────────▲───────────────────────────────────────────────────────┘
+                                           │
+                                           │ Encrypted WireGuard Overlay (UDP 51820)
+                                           │ Dual Active Hubs | Split-Tunneling | Clamped MTU
+                                           │
+┌──────────────────────────────────────────┴───────────────────────────────────────────────────────┐
+│ BARE-METAL FLEET (Provider B: Equinix Metal / Hetzner / OVH)                                     │
+│                                                                                                  │
+│   Fleet Management: Ansible / GitOps Pipeline pushes /etc/wireguard/wg0.conf                     │
+│   Zero-Downtime Reloads: 'wg syncconf wg0 <(wg-quick strip wg0)'                                 │
+│   Split-Horizon DNS: systemd-resolved routes ~internal.provider-a.net to VPC CoreDNS             │
+│                                                                                                  │
+│   ┌──────────────────────────┐    ┌──────────────────────────┐    ┌──────────────────────────┐   │
+│   │ Bare-Metal Host 01       │    │ Bare-Metal Host 02       │    │ Bare-Metal Host 30       │   │
+│   │  - eth0: Public IP       │    │  - eth0: Public IP       │    │  - eth0: Public IP       │   │
+│   │  - wg0 : 10.100.0.10/24  │    │  - wg0 : 10.100.0.11/24  │    │  - wg0 : 10.100.0.39/24  │   │
+│   │  - MTU : 1420 (Pinned)   │    │  - MTU : 1420 (Pinned)   │    │  - MTU : 1420 (Pinned)   │   │
+│   └──────────────────────────┘    └──────────────────────────┘    └──────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+
+
 ### 1.2 Data Plane & Kernel Packet Flow
 
 1. **Egress at Bare Metal:**
