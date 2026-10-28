@@ -237,3 +237,52 @@ Alert SREs before applications fail if handshakes stall:
 Run continuous synthetic checks from the bare-metal fleet targeting the private VPC endpoints every 10 seconds:
 * TCP Connect probe targeting Redis (`10.0.5.20:6379`).
 * HTTP GET probe targeting Kubernetes Health Endpoint (`[https://ingress.provider-a.internal/healthz](https://ingress.provider-a.internal/healthz)`).
+
+
+---
+
+## Key exchange:
+
+```
+In production, bare-metal servers and cloud VPCs do not share a host filesystem or Docker/Podman socket. Key exchange is managed via configuration orchestration, secret management, or a control plane
+```
+
+Pattern A: Centralized Secret/Parameter Store (AWS SSM / HashiCorp Vault)
+
+Gateway Initialization: The gateway boots, generates its keypair, and pushes its public key to a secure key-value store:
+
+```
+aws ssm put-parameter --name "/networking/wireguard/hub_pubkey" \
+  --type "String" --value "$(cat /etc/wireguard/gw_pub.key)" --overwrite
+```
+
+Bare-Metal Bootstrapping: When provisioning via Cloud-Init or systemd, the bare-metal node queries the parameter store:
+
+```
+GW_PUB=$(aws ssm get-parameter --name "/networking/wireguard/hub_pubkey" --query "Parameter.Value" --output text)
+sed -i "s|__GW_PUB__|$GW_PUB|g" /etc/wireguard/wg0.conf
+```
+
+
+Pattern B: Infrastructure as Code (Terraform / GitOps)
+
+If keys are statically provisioned:
+
+Terraform creates a wireguard_asymmetric_key or uses an encryption module to generate keypairs.
+
+The Gateway's public key is passed into the bare-metal provisioning module as a standard Terraform variable (var.gateway_public_key).
+
+Ansible templates /etc/wireguard/wg0.conf on both ends during initial provisioning.
+
+---
+
+Pattern C: Dynamic WireGuard Control Plane (Headscale / Tailscale / Netmaker)
+
+Rather than manually copying static text files, every node runs an agent.
+
+The agent connects to a central control plane over an outbound HTTPS/mTLS connection.
+
+The control plane coordinates public keys, assigns overlay IPs, monitors endpoint changes across NAT, and automatically reconfigures wg0 dynamically using the kernel's wg syncconf API without dropping sessions.
+
+
+---
