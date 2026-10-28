@@ -10,4 +10,7 @@
 
 **Active / Passive wireGuard failover**.
 
+**WireGuard Key exchange in the production**
+
+
 
