@@ -18,27 +18,45 @@
 - The naming convention should explain what its doing.
 - The scripts will also have note, logic, execution commands, expected output and current output, along with further verify scripts.
 
+
+**I have not added any miscellaneous code, so you can trust me and run it on an ubuntu vm.**
+
+
 ```
 cd technical-challenge/home_lab
 
-And bash <script_name>
+And:
+
+bash <script_name>
 
 001_deploy_ubuntu_lab_host_setup.sh
 001_verify_ubuntu_lab_host_setup.sh
+
 002_deploy_networks_and_isolation.sh
 002_verify_networks_and_isolation.sh
+
 003_deploy_saas_redis.sh
 003_verify_saas_redis.sh
+
 004_deploy_kind_k8s.sh
 004_verify_kind_k8s.sh
+
+verify_all_network_interfaces.sh
+
 005_deploy_gateway_and_baremetal.sh
 005_verify_gateway_and_baremetal.sh
+
 006_verify_negative_isolation.sh
+
+verify_all_network_interfaces.sh
+
 007_deploy_wireguard_gateway.sh
 007_verify_wireguard_gateway.sh
+
 008_deploy_wireguard_baremetal.sh
 008_verify_wireguard_baremetal.sh
-verify_all_network_interfaces.sh
+
+
 ```
 
 ---
@@ -50,4 +68,9 @@ My further finding and learning:
 - network_research_mode.md
 
 ---
+
+Also I have the other related notes as per the project asked.
+
+---
+
 
