@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: inspect_all_network_interfaces.sh
+# Script: 007_all_network_interfaces.sh
 # Purpose: Comprehensive audit of all host kernel interfaces, Podman Netavark
 #          bridges, container network namespaces, IP allocations, and routing tables.
 # ==============================================================================
