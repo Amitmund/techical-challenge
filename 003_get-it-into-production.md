@@ -1,4 +1,10 @@
 
+### Peer-Review
+
+- From my experiance I can tell you should always have a peer-review before it goes through the production design.
+- Also if its about to Go live, A CR also keep things clean, because we can get singed up from other team members, we all stay in the same page.
+
+
 
 ### 1. Network Placement & Routing Architecture
 
